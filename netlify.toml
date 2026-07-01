@@ -1,0 +1,11 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+  # The skill manifest is authored at /skills/registry.json (the file users edit) and
+  # copied into the published directory so the SPA can fetch it from /skills/registry.json.
+  command = "mkdir -p public/skills && cp skills/registry.json public/skills/registry.json"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200

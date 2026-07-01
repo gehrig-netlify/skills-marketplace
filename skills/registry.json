@@ -1,0 +1,40 @@
+{
+  "skills": [
+    {
+      "id": "pr-summary",
+      "name": "PR Summary",
+      "description": "Generates a concise, reviewer-friendly summary of a pull request from its diff, including risk callouts and a suggested test plan.",
+      "triggerPhrases": ["summarize this PR", "write a PR description", "/pr-summary"],
+      "team": "platform-eng",
+      "owner": "Dana Kim",
+      "lastUpdated": "2026-06-18"
+    },
+    {
+      "id": "incident-runbook",
+      "name": "Incident Runbook",
+      "description": "Walks an on-call engineer through the standard incident response: declare severity, open a channel, page the right team, and draft the status update.",
+      "triggerPhrases": ["start an incident", "we have an outage", "/incident"],
+      "team": "sre",
+      "owner": "Marco Silva",
+      "lastUpdated": "2026-06-22"
+    },
+    {
+      "id": "design-review",
+      "name": "Design Review",
+      "description": "Reviews a frontend component or page against the internal design system and accessibility checklist, then proposes concrete fixes.",
+      "triggerPhrases": ["review this UI", "check against the design system", "/design-review"],
+      "team": "design-systems",
+      "owner": "Priya Nair",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "sql-explain",
+      "name": "SQL Explain",
+      "description": "Explains a slow query plan in plain language and suggests indexes or rewrites, tuned for the team's Postgres conventions.",
+      "triggerPhrases": ["explain this query", "why is this query slow", "/sql-explain"],
+      "team": "data-eng",
+      "owner": "Sam Ito",
+      "lastUpdated": "2026-05-29"
+    }
+  ]
+}

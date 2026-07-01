@@ -1,0 +1,14 @@
+{
+  "name": "internal-team-skill-marketplace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "An internal marketplace for Claude Code teams to browse skills and track usage telemetry.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}

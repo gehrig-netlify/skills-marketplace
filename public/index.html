@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Skill Marketplace · Internal</title>
+  <meta name="description" content="Browse your team's Claude Code skills and track usage telemetry." />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind (Play CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            // Structural colors resolve from CSS variables so they flip with the
+            // active theme (.dark on <html>). Defined as `rgb(var(--x) / <alpha>)`
+            // so Tailwind opacity modifiers (bg-ink/85, text-body/40) keep working.
+            ink: 'rgb(var(--ink-rgb) / <alpha-value>)',
+            surface: 'rgb(var(--surface-rgb) / <alpha-value>)',
+            body: 'rgb(var(--body-rgb) / <alpha-value>)',
+            head: 'rgb(var(--head-rgb) / <alpha-value>)',
+            // Brand colors are constant across themes.
+            teal: '#00C7B7',
+            warn: '#FF6B6B',
+          },
+          fontFamily: {
+            display: ['"Space Grotesk"', 'sans-serif'],
+            sans: ['Inter', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+        },
+      },
+    }
+  </script>
+
+  <!-- Set the theme class before first paint to avoid a flash of the wrong theme. -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('skill-marketplace-theme') || 'system';
+        var dark = t === 'dark' ||
+          (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', dark);
+      } catch (e) {
+        document.documentElement.classList.add('dark');
+      }
+    })();
+  </script>
+
+  <!-- React + Babel (no build step required) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>
+    // Force the classic JSX runtime (React.createElement). Babel-standalone now
+    // defaults to the automatic runtime, which emits bare `import "react/jsx-runtime"`
+    // statements — illegal inside a non-module <script> and the cause of a blank page.
+    Babel.registerPreset('react-classic', {
+      presets: [[Babel.availablePresets['react'], { runtime: 'classic' }]],
+    });
+  </script>
+
+  <style>
+    /* ---------- theme tokens ---------- */
+    /* Light is the default (:root); the .dark class on <html> overrides it. */
+    :root {
+      --bg: #F6F7FB;
+      --ink-rgb: 246 247 251;
+      --surface-rgb: 255 255 255;
+      --body-rgb: 51 51 71;
+      --head-rgb: 17 17 30;
+      --line: #E4E4EE;
+      --line-strong: #CFCFE0;
+      --hover: #EEEEF5;
+      --chip-bg: #F1F1F8;
+      --chip-border: #E0E0EC;
+      --spark-empty: #C7C7D6;
+      --scroll-thumb: #D2D2E0;
+      --scroll-thumb-hover: #BEBECF;
+    }
+    html.dark {
+      --bg: #0E0E1A;
+      --ink-rgb: 14 14 26;
+      --surface-rgb: 26 26 46;
+      --body-rgb: 232 232 232;
+      --head-rgb: 255 255 255;
+      --line: #262640;
+      --line-strong: #3A3A5E;
+      --hover: #20203A;
+      --chip-bg: #12121F;
+      --chip-border: #2A2A45;
+      --spark-empty: #3A3A55;
+      --scroll-thumb: #2A2A45;
+      --scroll-thumb-hover: #36365A;
+    }
+
+    html, body { background: var(--bg); }
+    body {
+      color: rgb(var(--body-rgb));
+      font-family: Inter, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      transition: background-color 0.25s ease, color 0.25s ease;
+    }
+    ::selection { background: rgba(0, 199, 183, 0.3); }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 6px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
+
+    /* Signature detail: teal pulse ring on recently-triggered skills */
+    @keyframes pulse-ring {
+      0%   { box-shadow: 0 0 0 0 rgba(0, 199, 183, 0.55); }
+      70%  { box-shadow: 0 0 0 12px rgba(0, 199, 183, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(0, 199, 183, 0); }
+    }
+    .pulse-ring {
+      animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      border-color: rgba(0, 199, 183, 0.6) !important;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+    .live-dot { animation: blink 1.6s ease-in-out infinite; }
+
+    .fade-in { animation: fade-in 0.4s ease both; }
+    @keyframes fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react-classic">
+    const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+    const ACCENT = '#00C7B7';
+    const WARN = '#FF6B6B';
+    const RECENT_WINDOW_MS = 60 * 1000;   // pulse ring window
+    const POLL_INTERVAL_MS = 10 * 1000;   // usage poll cadence
+    const LOW_USAGE_THRESHOLD = 5;        // below this total = "low usage" warning tint
+
+    /* ---------- helpers ---------- */
+
+    function timeAgo(ms) {
+      if (!ms) return 'never';
+      const diff = Date.now() - ms;
+      if (diff < 0) return 'just now';
+      const s = Math.floor(diff / 1000);
+      if (s < 60) return s <= 3 ? 'just now' : `${s}s ago`;
+      const m = Math.floor(s / 60);
+      if (m < 60) return `${m}m ago`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return `${h}h ago`;
+      const d = Math.floor(h / 24);
+      if (d < 30) return `${d}d ago`;
+      return new Date(ms).toLocaleDateString();
+    }
+
+    function formatDate(str) {
+      if (!str) return '—';
+      const d = new Date(str);
+      if (isNaN(d)) return str;
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    /* ---------- sparkline ---------- */
+
+    function Sparkline({ data, width = 96, height = 28 }) {
+      const max = Math.max(1, ...data);
+      const n = data.length;
+      const stepX = n > 1 ? width / (n - 1) : width;
+      const points = data.map((v, i) => {
+        const x = i * stepX;
+        const y = height - (v / max) * (height - 4) - 2;
+        return [x, y];
+      });
+      const line = points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+      const area = `0,${height} ` + line + ` ${width},${height}`;
+      const [lx, ly] = points[points.length - 1];
+      const empty = max <= 1 && data.every((v) => v === 0);
+      return (
+        <svg width={width} height={height} className="overflow-visible" aria-hidden="true">
+          <defs>
+            <linearGradient id="spark-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={ACCENT} stopOpacity="0.28" />
+              <stop offset="100%" stopColor={ACCENT} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          {!empty && <polygon points={area} fill="url(#spark-fill)" />}
+          <polyline
+            points={line}
+            fill="none"
+            stroke={empty ? 'var(--spark-empty)' : ACCENT}
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          {!empty && <circle cx={lx} cy={ly} r="2.5" fill={ACCENT} />}
+        </svg>
+      );
+    }
+
+    /* ---------- trigger chip ---------- */
+
+    function Chip({ children }) {
+      return (
+        <span className="font-mono text-[11px] leading-none px-2 py-1 rounded-md bg-[var(--chip-bg)] border border-[color:var(--chip-border)] text-teal/90 whitespace-nowrap">
+          {children}
+        </span>
+      );
+    }
+
+    /* ---------- daily activity bars (expanded detail) ---------- */
+
+    const DAY_LABELS = ['6d', '5d', '4d', '3d', '2d', '1d', 'today'];
+
+    function DayBars({ data }) {
+      const max = Math.max(1, ...data);
+      const peak = Math.max(...data);
+      return (
+        <div className="flex items-end gap-1.5 h-20">
+          {data.map((v, i) => (
+            <div key={i} className="flex-1 flex flex-col items-center gap-1.5 h-full">
+              <div className="flex-1 w-full flex items-end justify-center">
+                <div
+                  className="w-full rounded-sm relative group"
+                  style={{
+                    height: `${Math.max(3, (v / max) * 100)}%`,
+                    background: v > 0 ? ACCENT : 'var(--spark-empty)',
+                    opacity: v > 0 ? (v === peak ? 1 : 0.6) : 0.35,
+                  }}
+                  title={`${DAY_LABELS[i]}: ${v} invocation${v === 1 ? '' : 's'}`}
+                />
+              </div>
+              <span className="text-[9px] font-mono text-body/40 leading-none">{DAY_LABELS[i]}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    /* ---------- usage row (catalog + telemetry, unified + expandable) ---------- */
+
+    function UsageRow({ skill }) {
+      const [open, setOpen] = useState(false);
+      const recentlyActive = skill.lastInvoked && Date.now() - skill.lastInvoked < RECENT_WINDOW_MS;
+      const lowUsage = skill.total < LOW_USAGE_THRESHOLD;
+
+      return (
+        <div
+          className={
+            'fade-in rounded-2xl bg-surface border transition-colors ' +
+            (recentlyActive
+              ? 'pulse-ring'
+              : 'border-[color:var(--line)] hover:border-[color:var(--line-strong)]')
+          }
+        >
+          <button
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className="w-full text-left px-4 sm:px-5 py-4 grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_auto_auto_auto] gap-x-5 gap-y-3 items-center"
+          >
+            {/* identity + description */}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-display font-semibold text-head truncate">{skill.name}</span>
+                {recentlyActive && (
+                  <span className="flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-teal shrink-0">
+                    <span className="live-dot inline-block w-1.5 h-1.5 rounded-full bg-teal"></span>
+                    live
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-body/40 font-mono mt-0.5 truncate">
+                {skill.team}
+                {skill.owner && (
+                  <span className="text-body/30"> · owner {skill.owner}</span>
+                )}
+              </div>
+              <p className="text-sm text-body/60 mt-1.5 leading-relaxed line-clamp-1 sm:pr-6">
+                {skill.description}
+              </p>
+            </div>
+
+            {/* total invocations */}
+            <div className="text-right">
+              <div
+                className="font-mono text-xl font-semibold leading-none"
+                style={{ color: lowUsage ? WARN : ACCENT }}
+              >
+                {skill.total.toLocaleString()}
+              </div>
+              <div className="text-[10px] uppercase tracking-wider text-body/40 mt-1">invocations</div>
+            </div>
+
+            {/* 7-day sparkline */}
+            <div
+              className="hidden sm:flex flex-col items-center"
+              title={`Last 7 days: ${skill.dailyCounts.join(', ')}`}
+            >
+              <Sparkline data={skill.dailyCounts} />
+              <div className="text-[10px] uppercase tracking-wider text-body/40 mt-1">last 7 days</div>
+            </div>
+
+            {/* last seen + expand affordance */}
+            <div className="hidden sm:flex items-center gap-3 min-w-[104px] justify-end">
+              <div className="text-right">
+                <div className="font-mono text-sm text-body/80 leading-none">{timeAgo(skill.lastInvoked)}</div>
+                <div className="text-[10px] uppercase tracking-wider text-body/40 mt-1">last seen</div>
+              </div>
+              <svg
+                className={'text-body/40 transition-transform duration-200 ' + (open ? 'rotate-180' : '')}
+                width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </div>
+          </button>
+
+          {open && (
+            <div className="px-4 sm:px-5 pb-5 pt-4 border-t border-[color:var(--line)] grid gap-6 sm:grid-cols-[1fr_18rem] fade-in">
+              <div className="flex flex-col gap-4 min-w-0">
+                <p className="text-sm text-body/70 leading-relaxed sm:hidden">{skill.description}</p>
+
+                {skill.triggerPhrases?.length > 0 && (
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-body/40 mb-2">Triggers</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {skill.triggerPhrases.map((t, i) => <Chip key={i}>{t}</Chip>)}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs font-mono text-body/50">
+                  <span>team · <span className="text-body/80">{skill.team || '—'}</span></span>
+                  <span>owner · <span className="text-body/80">{skill.owner || '—'}</span></span>
+                  <span>updated · <span className="text-body/80">{formatDate(skill.lastUpdated)}</span></span>
+                  <span>last invoked · <span className="text-body/80">{timeAgo(skill.lastInvoked)}</span></span>
+                </div>
+              </div>
+
+              <div className="sm:justify-self-end w-full sm:w-72">
+                <div className="text-[10px] uppercase tracking-wider text-body/40 mb-2">Daily activity</div>
+                <DayBars data={skill.dailyCounts} />
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    /* ---------- deploy-your-own card ---------- */
+
+    const REPO_URL = 'https://github.com/netlify-templates/skill-marketplace';
+
+    function DeployCard() {
+      const [minimized, setMinimized] = useState(false);
+      const deployUrl =
+        'https://app.netlify.com/start/deploy?repository=' + encodeURIComponent(REPO_URL);
+
+      if (minimized) {
+        return (
+          <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-30">
+            <button
+              onClick={() => setMinimized(false)}
+              aria-label="Show deploy panel"
+              className="fade-in flex items-center gap-2 bg-surface/95 backdrop-blur border border-[color:var(--line)] rounded-full shadow-2xl shadow-black/25 pl-3 pr-4 py-2 text-xs font-medium text-body/80 hover:text-teal hover:border-teal/40 transition-colors"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2 2 7l10 5 10-5-10-5Z" /><path d="m2 17 10 5 10-5" /><path d="m2 12 10 5 10-5" />
+              </svg>
+              Deploy your own
+            </button>
+          </div>
+        );
+      }
+
+      return (
+        <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-30 w-[min(20rem,calc(100vw-2rem))]">
+          <div className="fade-in relative bg-surface/95 backdrop-blur border border-[color:var(--line)] rounded-2xl shadow-2xl shadow-black/25 p-4">
+            <button
+              onClick={() => setMinimized(true)}
+              aria-label="Minimize deploy panel"
+              className="absolute top-2.5 right-2.5 grid place-items-center w-6 h-6 rounded-md text-body/40 hover:text-body/90 hover:bg-[var(--hover)] transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14" />
+              </svg>
+            </button>
+            <div className="flex items-start gap-3 pr-6">
+              <div className="w-9 h-9 rounded-lg bg-teal/15 border border-teal/30 grid place-items-center shrink-0">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2 2 7l10 5 10-5-10-5Z" /><path d="m2 17 10 5 10-5" /><path d="m2 12 10 5 10-5" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-display text-sm font-semibold text-head leading-tight">
+                  Want to deploy your own?
+                </h3>
+                <p className="text-xs text-body/50 mt-1 leading-relaxed">
+                  Fork the template and stand up your team's skill marketplace in one click.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3.5 flex items-center justify-between gap-3">
+              <a href={deployUrl} target="_blank" rel="noopener noreferrer" aria-label="Deploy to Netlify">
+                <img
+                  src="https://www.netlify.com/img/deploy/button.svg"
+                  alt="Deploy to Netlify"
+                  width="147" height="32" className="h-8 w-auto"
+                />
+              </a>
+              <a
+                href={REPO_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs font-mono text-body/50 hover:text-teal transition-colors"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12 .5C5.73.5.5 5.74.5 12.02c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.7 0-1.26.45-2.29 1.2-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.59.23 2.76.11 3.05.75.81 1.2 1.84 1.2 3.1 0 4.43-2.69 5.41-5.25 5.69.41.36.78 1.05.78 2.12v3.14c0 .31.21.67.8.56A11.52 11.52 0 0 0 23.5 12.02C23.5 5.74 18.27.5 12 .5Z" />
+                </svg>
+                GitHub
+              </a>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    /* ---------- sidebar ---------- */
+
+    function Sidebar({ teams, teamFilter, setTeamFilter, sort, setSort, totals }) {
+      const sortOptions = [
+        { id: 'usage', label: 'Usage' },
+        { id: 'alpha', label: 'Alphabetical' },
+        { id: 'recent', label: 'Recently updated' },
+      ];
+      return (
+        <aside className="hidden lg:flex w-60 lg:flex-shrink-0 flex-col gap-7">
+          <div>
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.15em] text-body/40 mb-3">Sort by</h2>
+            <div className="flex flex-col gap-1">
+              {sortOptions.map((o) => (
+                <button
+                  key={o.id}
+                  onClick={() => setSort(o.id)}
+                  className={
+                    'text-left text-sm px-3 py-2 rounded-lg transition-colors ' +
+                    (sort === o.id
+                      ? 'bg-teal/10 text-teal font-medium'
+                      : 'text-body/70 hover:bg-[var(--hover)]')
+                  }
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.15em] text-body/40 mb-3">Team</h2>
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={() => setTeamFilter('all')}
+                className={
+                  'flex items-center justify-between text-sm px-3 py-2 rounded-lg transition-colors ' +
+                  (teamFilter === 'all' ? 'bg-teal/10 text-teal font-medium' : 'text-body/70 hover:bg-[var(--hover)]')
+                }
+              >
+                <span>All teams</span>
+                <span className="font-mono text-xs text-body/40">{totals.all}</span>
+              </button>
+              {teams.map((o) => (
+                <button
+                  key={o}
+                  onClick={() => setTeamFilter(o)}
+                  className={
+                    'flex items-center justify-between text-sm px-3 py-2 rounded-lg transition-colors ' +
+                    (teamFilter === o ? 'bg-teal/10 text-teal font-medium' : 'text-body/70 hover:bg-[var(--hover)]')
+                  }
+                >
+                  <span className="font-mono truncate">{o}</span>
+                  <span className="font-mono text-xs text-body/40">{totals[o] || 0}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </aside>
+      );
+    }
+
+    /* ---------- mobile filters (compact selects) ---------- */
+
+    function MobileFilters({ teams, teamFilter, setTeamFilter, sort, setSort, totals }) {
+      const selectClass =
+        'w-full appearance-none bg-surface border border-[color:var(--line)] rounded-lg ' +
+        'pl-3 pr-9 py-2 text-sm text-body focus:outline-none focus:border-teal/50 transition-colors';
+      const Caret = () => (
+        <svg
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-body/40"
+          width="14" height="14" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      );
+      return (
+        <div className="lg:hidden grid grid-cols-2 gap-3 mb-5">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-body/40">Sort</span>
+            <div className="relative">
+              <select value={sort} onChange={(e) => setSort(e.target.value)} className={selectClass}>
+                <option value="usage">Usage</option>
+                <option value="alpha">Alphabetical</option>
+                <option value="recent">Recently updated</option>
+              </select>
+              <Caret />
+            </div>
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-body/40">Team</span>
+            <div className="relative">
+              <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} className={selectClass}>
+                <option value="all">All teams ({totals.all})</option>
+                {teams.map((o) => (
+                  <option key={o} value={o}>{o} ({totals[o] || 0})</option>
+                ))}
+              </select>
+              <Caret />
+            </div>
+          </label>
+        </div>
+      );
+    }
+
+    /* ---------- theme toggle ---------- */
+
+    const THEME_KEY = 'skill-marketplace-theme';
+
+    function getStoredTheme() {
+      try { return localStorage.getItem(THEME_KEY) || 'system'; } catch (e) { return 'system'; }
+    }
+
+    function applyTheme(theme) {
+      const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const dark = theme === 'dark' || (theme === 'system' && systemDark);
+      document.documentElement.classList.toggle('dark', dark);
+    }
+
+    const THEME_OPTIONS = [
+      {
+        id: 'system',
+        label: 'System',
+        icon: (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8" /><path d="M12 17v4" />
+          </svg>
+        ),
+      },
+      {
+        id: 'light',
+        label: 'Light',
+        icon: (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+          </svg>
+        ),
+      },
+      {
+        id: 'dark',
+        label: 'Dark',
+        icon: (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+          </svg>
+        ),
+      },
+    ];
+
+    function ThemeToggle({ theme, setTheme }) {
+      return (
+        <div
+          role="group"
+          aria-label="Color theme"
+          className="flex items-center gap-0.5 bg-surface border border-[color:var(--line)] rounded-lg p-0.5"
+        >
+          {THEME_OPTIONS.map((o) => (
+            <button
+              key={o.id}
+              onClick={() => setTheme(o.id)}
+              title={`${o.label} theme`}
+              aria-label={`${o.label} theme`}
+              aria-pressed={theme === o.id}
+              className={
+                'grid place-items-center w-7 h-7 rounded-md transition-colors ' +
+                (theme === o.id
+                  ? 'bg-teal/15 text-teal'
+                  : 'text-body/50 hover:text-body/90 hover:bg-[var(--hover)]')
+              }
+            >
+              {o.icon}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    /* ---------- app ---------- */
+
+    function App() {
+      const [skills, setSkills] = useState([]);
+      const [usage, setUsage] = useState({});
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+      const [lastSync, setLastSync] = useState(null);
+
+      const [theme, setTheme] = useState(getStoredTheme);
+
+      // Apply + persist the theme, and follow system changes while in "system" mode.
+      useEffect(() => {
+        applyTheme(theme);
+        try { localStorage.setItem(THEME_KEY, theme); } catch (e) {/* ignore */}
+        const mq = window.matchMedia('(prefers-color-scheme: dark)');
+        const onChange = () => { if (theme === 'system') applyTheme('system'); };
+        mq.addEventListener('change', onChange);
+        return () => mq.removeEventListener('change', onChange);
+      }, [theme]);
+
+      const [teamFilter, setTeamFilter] = useState('all');
+      const [sort, setSort] = useState('usage');
+      const [query, setQuery] = useState('');
+      const searchRef = useRef(null);
+
+      // Focus the search field on ⌘K / Ctrl+K.
+      useEffect(() => {
+        const onKeyDown = (e) => {
+          if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+            e.preventDefault();
+            searchRef.current?.focus();
+            searchRef.current?.select();
+          }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+      }, []);
+
+      // Load the static skill manifest once.
+      useEffect(() => {
+        fetch('/skills/registry.json')
+          .then((r) => {
+            if (!r.ok) throw new Error('Could not load skills/registry.json');
+            return r.json();
+          })
+          .then((data) => setSkills(Array.isArray(data?.skills) ? data.skills : []))
+          .catch((e) => setError(e.message))
+          .finally(() => setLoading(false));
+      }, []);
+
+      // Poll usage telemetry every 10s.
+      const fetchUsage = useCallback(() => {
+        fetch('/api/usage')
+          .then((r) => (r.ok ? r.json() : []))
+          .then((rows) => {
+            const map = {};
+            (Array.isArray(rows) ? rows : []).forEach((row) => { map[row.skillId] = row; });
+            setUsage(map);
+            setLastSync(Date.now());
+          })
+          .catch(() => {/* keep prior data on transient errors */});
+      }, []);
+
+      useEffect(() => {
+        fetchUsage();
+        const id = setInterval(fetchUsage, POLL_INTERVAL_MS);
+        return () => clearInterval(id);
+      }, [fetchUsage]);
+
+      // Merge manifest + telemetry.
+      const merged = useMemo(() => {
+        return skills.map((s) => {
+          const u = usage[s.id] || {};
+          return {
+            ...s,
+            total: u.total || 0,
+            dailyCounts: u.dailyCounts && u.dailyCounts.length === 7 ? u.dailyCounts : new Array(7).fill(0),
+            lastInvoked: u.lastInvoked || null,
+          };
+        });
+      }, [skills, usage]);
+
+      const teams = useMemo(
+        () => Array.from(new Set(skills.map((s) => s.team).filter(Boolean))).sort(),
+        [skills],
+      );
+
+      const totals = useMemo(() => {
+        const t = { all: merged.length };
+        merged.forEach((s) => { t[s.team] = (t[s.team] || 0) + 1; });
+        return t;
+      }, [merged]);
+
+      const visible = useMemo(() => {
+        let list = merged;
+        if (teamFilter !== 'all') list = list.filter((s) => s.team === teamFilter);
+        if (query.trim()) {
+          const q = query.toLowerCase();
+          list = list.filter(
+            (s) =>
+              s.name.toLowerCase().includes(q) ||
+              s.description.toLowerCase().includes(q) ||
+              (s.triggerPhrases || []).some((t) => t.toLowerCase().includes(q)),
+          );
+        }
+        const sorted = [...list];
+        if (sort === 'usage') sorted.sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+        else if (sort === 'alpha') sorted.sort((a, b) => a.name.localeCompare(b.name));
+        else if (sort === 'recent') sorted.sort((a, b) => String(b.lastUpdated || '').localeCompare(String(a.lastUpdated || '')));
+        return sorted;
+      }, [merged, teamFilter, query, sort]);
+
+      return (
+        <div className="min-h-screen flex flex-col">
+          {/* Header */}
+          <header className="border-b border-[color:var(--line)] sticky top-0 z-10 bg-ink/85 backdrop-blur">
+            <div className="max-w-6xl mx-auto px-5 sm:px-8 py-4 flex items-center gap-4">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="w-9 h-9 rounded-lg bg-teal/15 border border-teal/30 grid place-items-center flex-shrink-0">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2 2 7l10 5 10-5-10-5Z" /><path d="m2 17 10 5 10-5" /><path d="m2 12 10 5 10-5" />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <h1 className="font-display text-lg font-bold tracking-tight text-head leading-none truncate">Skill Marketplace</h1>
+                  <p className="text-[11px] text-body/40 mt-0.5 font-mono truncate">internal · claude code</p>
+                </div>
+              </div>
+              <div className="flex justify-end px-2 w-full max-w-sm relative">
+                <input
+                  ref={searchRef}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search skills"
+                  className="w-full bg-surface border border-[color:var(--line)] rounded-lg pl-3.5 pr-14 py-2 text-sm text-body text-left placeholder:text-body/30 focus:outline-none focus:border-teal/50 transition-colors"
+                />
+                <kbd className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 font-mono text-[10px] text-body/35 border border-[color:var(--line)] rounded px-1.5 py-0.5 leading-none">⌘K</kbd>
+              </div>
+            </div>
+          </header>
+
+          <main className="w-full max-w-6xl mx-auto px-5 sm:px-8 py-8 flex-1">
+            <div className="flex flex-col lg:flex-row gap-8">
+              <Sidebar
+                teams={teams}
+                teamFilter={teamFilter}
+                setTeamFilter={setTeamFilter}
+                sort={sort}
+                setSort={setSort}
+                totals={totals}
+              />
+
+              <div className="flex-1 min-w-0">
+                <MobileFilters
+                  teams={teams}
+                  teamFilter={teamFilter}
+                  setTeamFilter={setTeamFilter}
+                  sort={sort}
+                  setSort={setSort}
+                  totals={totals}
+                />
+
+                <section>
+                  <div className="flex items-baseline justify-between mb-4">
+                    <div>
+                      <h2 className="font-display text-xl font-semibold text-head tracking-tight">Usage</h2>
+                      <p className="text-xs text-body/40 mt-1">
+                        Every team skill and its live telemetry — select a row for triggers and daily activity.
+                      </p>
+                    </div>
+                    <span className="font-mono text-xs text-body/40 whitespace-nowrap pl-4">
+                      {visible.length} shown
+                    </span>
+                  </div>
+
+                  {loading && <p className="text-body/40 text-sm">Loading skills…</p>}
+                  {error && (
+                    <div className="text-warn text-sm bg-warn/10 border border-warn/20 rounded-lg px-4 py-3">
+                      {error}
+                    </div>
+                  )}
+                  {!loading && !error && visible.length === 0 && (
+                    <p className="text-body/40 text-sm">No skills match your filters.</p>
+                  )}
+
+                  <div className="flex flex-col gap-3">
+                    {visible.map((s) => <UsageRow key={s.id} skill={s} />)}
+                  </div>
+                </section>
+              </div>
+            </div>
+          </main>
+
+          <footer className="w-full max-w-6xl mx-auto px-5 sm:px-8 pb-28 lg:pb-8">
+            <div className="pt-6 border-t border-[color:var(--line)] flex flex-col items-center gap-4">
+              <ThemeToggle theme={theme} setTheme={setTheme} />
+              <div className="text-center text-xs text-body/30 font-mono">
+                Skill Marketplace · React + Netlify Functions + Netlify Blobs · edit{' '}
+                <span className="text-body/50">skills/registry.json</span> to add skills
+              </div>
+            </div>
+          </footer>
+
+          <DeployCard />
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

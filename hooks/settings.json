@@ -1,0 +1,8 @@
+{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "Skill",
+      "hooks": [{ "type": "command", "command": "~/.claude/hooks/log-skill.sh" }]
+    }]
+  }
+}
