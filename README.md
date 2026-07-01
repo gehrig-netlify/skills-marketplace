@@ -2,17 +2,17 @@
 
 A small, self-hostable web app that lets a Claude Code team browse the skills available inside their organization and track how often each one gets used. Skills are defined in a static manifest you check into the repo, and usage telemetry is collected from a Claude Code `PreToolUse` hook that pings the app every time a teammate invokes a skill. It's meant to feel like an internal tool — a single place to see what skills exist, who owns them, and which ones are actually being used.
 
-It's built to be forked, edited, and deployed to [Netlify](https://www.netlify.com/) in one click. There's no database to provision and no framework CLI to install.
+It's built to be forked, edited, and deployed to [Netlify](https://www.netlify.com/) in one click.
 
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=YOUR_REPO_URL)
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/gehrig-netlify/skills-marketplace)
 
-> Replace `YOUR_REPO_URL` in the button above with your fork's URL after you fork the repo.
+> See it live at [skillsmarketplace.netlify.app](skillsmarketplace.netlify.app)
 
 ## What's inside
 
 - **Frontend** — a React single-page app (`public/index.html`) loaded straight from CDN with Tailwind for styling. No build step, no bundler.
 - **Backend** — two Netlify Functions (`netlify/functions/`) for recording and aggregating usage.
-- **Storage** — [Netlify Blobs](https://docs.netlify.com/blobs/overview/), so there's no external database to run.
+- **Storage** — [Netlify Blobs](https://docs.netlify.com/blobs/overview/), so no database to run.
 - **Skill manifest** — `skills/registry.json`, the file you edit to list your team's skills.
 - **Hook** — `hooks/log-skill.sh`, the Claude Code `PreToolUse` hook that reports each skill invocation.
 
@@ -32,6 +32,7 @@ It's built to be forked, edited, and deployed to [Netlify](https://www.netlify.c
      "name": "PR Summary",
      "description": "Generates a reviewer-friendly summary of a pull request.",
      "triggerPhrases": ["summarize this PR", "/pr-summary"],
+     "team": "engineering",
      "owner": "platform-eng",
      "lastUpdated": "2026-06-18"
    }
