@@ -4,7 +4,7 @@ A small, self-hostable web app that lets a Claude Code team browse the skills av
 
 It's built to be forked, edited, and deployed to [Netlify](https://www.netlify.com/) in one click.
 
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/gehrig-netlify/skills-marketplace)
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/gehrig-netlify/skills-marketplace&private=1)
 
 > See it live at [skillsmarketplace.netlify.app](skillsmarketplace.netlify.app)
 
